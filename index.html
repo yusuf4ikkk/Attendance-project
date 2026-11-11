@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart Attendance</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<script src="shim.js"></script>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f4f8fd;--card:#fff;--tx:#0b1f3a;--mu:#5b6f8a;--pr:#0a2a5e;--ac:#2f9bff;--bd:#dbe6f3;--red:#e5233d;--g:#22b573;--y:#f2b705;--b:#2f7cff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#07111f;--card:#0f1f36;--tx:#eaf2ff;--mu:#8ea5c4;--pr:#2f9bff;--ac:#5cb4ff;--bd:#1c3252}}
+:root[data-theme="dark"]{--bg:#07111f;--card:#0f1f36;--tx:#eaf2ff;--mu:#8ea5c4;--pr:#2f9bff;--ac:#5cb4ff;--bd:#1c3252}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#app{max-width:520px;margin:0 auto;padding:14px 14px 90px;animation:in .3s}
+@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+h1{font-size:22px;margin:4px 0 2px}h2{font-size:17px;margin:16px 0 8px}small,.mu{color:var(--mu)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:18px;padding:14px;margin:10px 0}
+.hero{background:linear-gradient(135deg,#0a2a5e,#2f9bff);color:#fff;border:0}.hero .mu{color:#d6e9ff}
+.btn{display:block;width:100%;border:0;border-radius:14px;padding:13px;font:600 15px inherit;background:var(--pr);color:#fff;cursor:pointer;margin:8px 0;transition:transform .1s}
+.btn:active{transform:scale(.97)}.btn.s{background:var(--card);color:var(--tx);border:1px solid var(--bd)}.btn.sm{display:inline-block;width:auto;padding:7px 12px;font-size:13px;margin:2px}
+.btn.red{background:var(--red)}.btn.ok{background:var(--g)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{text-align:center;padding:10px 4px}.stat b{font-size:22px;display:block}
+.heart{color:var(--red);font-weight:700}.big{font-size:34px;font-weight:800}
+input,select{width:100%;padding:12px;border-radius:12px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font:inherit;margin:5px 0}
+.pill{display:inline-block;padding:3px 9px;border-radius:99px;font-size:12px;font-weight:600;color:#fff}
+.g{background:var(--g)}.y{background:var(--y);color:#222}.r{background:var(--red)}.b{background:var(--b)}.w{background:var(--mu)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--bd)}.row:last-child{border:0}
+.tbl{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--bd);white-space:nowrap}th{color:var(--mu)}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--bd);display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom,0px)}
+nav div{display:flex;max-width:520px;width:100%}nav button{flex:1;border:0;background:none;color:var(--mu);padding:10px 2px;font:600 11px inherit;cursor:pointer}nav button.on{color:var(--ac)}nav i{display:block;font-style:normal;font-size:20px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}.cal div{padding:8px 0;border-radius:10px;font-size:13px}
+video{width:100%;border-radius:16px;background:#000}#toast{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:var(--pr);color:#fff;padding:10px 16px;border-radius:14px;z-index:9;max-width:90%;display:none}
+.top{display:flex;justify-content:space-between;align-items:center}
+</style></head><body>
+<div id="toast"></div><div id="app">Загрузка…</div><div id="nav"></div>
+<script>
+const $=s=>document.querySelector(s),E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),P=n=>String(n).padStart(2,'0');
+const dk=t=>{const d=new Date(t);return d.getFullYear()+'-'+P(d.getMonth()+1)+'-'+P(d.getDate())},tm=t=>{const d=new Date(t);return P(d.getHours())+':'+P(d.getMinutes())};
+const wk=t=>{const d=new Date(t);d.setHours(0,0,0,0);d.setDate(d.getDate()-(d.getDay()+6)%7);return dk(d)};
+const ST={ok:['Вовремя','g'],small:['Небольшое опоздание','y'],late:['Опоздал','y'],nb:['НБ','r'],freed:['Освобождено','b']};
+const pill=s=>s?`<span class="pill ${ST[s][1]}">${ST[s][0]}</span>`:'<span class="pill r">НБ</span>';
+const H=s=>{let h=5381;for(const c of s)h=((h<<5)+h+c.charCodeAt(0))>>>0;return h.toString(36)};
+const S={cfg:null,out:(()=>{try{return localStorage.getItem('sa_out')==='1'}catch(e){return false}})(),teachers:{},owner:false,students:{},att:[],reqs:[],uid:null,admin:false,asStu:false,v:'home',pend:null,q:'',grp:'',per:'day',ready:{},prevBal:null,prevReq:{}};
+let db,user,stream,raf;const setOut=v=>{S.out=v;try{localStorage.setItem('sa_out',v?'1':'0')}catch(e){}};
+const toast=m=>{const t=$('#toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',3500)};
+const slot=()=>Math.floor((Date.now()-new Date().getTimezoneOffset()*6e4)/864e5);const code=()=>String(parseInt(H(S.cfg.secret+(S.cfg.salt||'')+slot()),36)%10000).padStart(4,'0');
+const okTok=t=>!!S.cfg&&String(t||'').trim()===code();
+const pairs=()=>S.cfg.pairs.map(p=>{const[h,m]=p.split(':').map(Number),d=new Date();d.setHours(h,m,0,0);return{p,t:+d}});
+const curPair=n=>pairs().reduce((a,b)=>Math.abs(b.t-n)<Math.abs(a.t-n)?b:a);
+const stOf=(n,pr)=>{const m=(n-pr.t)/6e4;return m<=0?'ok':m<=S.cfg.grace?'small':'late'};
+const me=()=>S.out?null:S.students[S.uid],mine=id=>S.att.filter(a=>a.sid===id);
+function hearts(id){const w={};mine(id).forEach(a=>(w[wk(a.ts)]=w[wk(a.ts)]||[]).push(a));const cur=wk(Date.now());
+ let e=0;for(const k in w)if(k<cur&&!w[k].some(a=>a.status==='late'||a.status==='nb'))e++;
+ return e-S.reqs.filter(r=>r.sid===id&&r.st==='ok').length+((S.students[id]||{}).adj||0)}
+async function write(id,data,who,from){const ref=db.doc('att/'+id),s=await ref.get(),old=s.exists?s.data():{};
+ const hist=(old.hist||[]).concat([{by:who,at:Date.now(),from:old.status||'—',to:data.status}]);await ref.set(Object.assign({},old,data,{hist}))}
+async function checkIn(t){
+ if(!S.cfg||!okTok(t))return toast('Неверный код');const m=me();if(!m){S.pend=t;S.v='form';return render()}
+ const n=Date.now(),pr=curPair(n),id=`${S.uid}_${dk(n)}_${pr.p.replace(':','')}`,ex=await db.doc('att/'+id).get();
+ if(ex.exists){toast('Вы уже отмечены на этой паре');S.v='home';return render()}
+ const st=stOf(n,pr);await write(id,{sid:S.uid,name:m.last+' '+m.first,group:m.group,ts:n,date:dk(n),pair:pr.p,status:st},'student');
+ toast('Отмечено в '+tm(n)+' · '+ST[st][0]);S.v='home';render()}
+function stopCam(){cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(t=>t.stop());stream=null}
+async function startCam(){try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=$('#vid');v.srcObject=stream;await v.play();const c=document.createElement('canvas'),x=c.getContext('2d');
+ const loop=()=>{if(!stream)return;if(v.videoWidth){c.width=v.videoWidth;c.height=v.videoHeight;x.drawImage(v,0,0);const r=jsQR(x.getImageData(0,0,c.width,c.height).data,c.width,c.height);if(r&&r.data){const d=r.data;stopCam();return checkIn(d)}}raf=requestAnimationFrame(loop)};loop()}catch(e){$('#camerr').textContent='Камера недоступна — введите код вручную.'}}
+const go=v=>{stopCam();S.v=v;render()};
+/* ---------- views ---------- */
+function vScan(){return`<h1>Код с пары</h1><p class="mu">Введите 4-значный код, который показывает преподаватель.</p>
+<div class="card"><input id="mc" inputmode="numeric" maxlength="4" placeholder="0000" style="font-size:32px;text-align:center;letter-spacing:8px"><button class="btn" data-a="manual">Отметиться</button></div><button class="btn s" data-a="go" data-v="home">Назад</button>`}
+function vForm(){return`<h1>Вход</h1><p class="mu">Регистрация студента. Укажите данные один раз — они сохранятся.</p><div class="card"><input id="ln" placeholder="Фамилия"><input id="fn" placeholder="Имя"><input id="gr" placeholder="Группа, например ПКС2-24"><button class="btn" data-a="login">Войти</button></div><button class="btn s" data-a="go" data-v="welcome">Назад</button>`}
+function vWelcome(){return`<div class="card hero"><h1>Smart Attendance</h1><p class="mu">Отмечайтесь по коду, копите <span style="color:#ff9aa8">❤</span> и освобождайтесь от НБ.</p></div><h2>Кто вы?</h2><button class="btn" data-a="go" data-v="form">🎓 Я студент</button><button class="btn s" data-a="go" data-v="tform">👩‍🏫 Я преподаватель</button>`}
+function vTForm(){return`<h1>Вход преподавателя</h1><p class="mu">Введите ФИО и PIN преподавателя (его выдаёт администратор).</p><div class="card"><input id="tn" placeholder="Фамилия Имя Отчество"><input id="tp" inputmode="numeric" maxlength="4" placeholder="PIN"><button class="btn" data-a="tlogin">Войти</button></div><button class="btn s" data-a="go" data-v="welcome">Назад</button>`}
+function rank(){const c=wk(Date.now()),m={};S.att.filter(a=>wk(a.ts)===c&&a.status==='ok').forEach(a=>m[a.name]=(m[a.name]||0)+1);return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,5)}
+function vHome(){const m=me(),r=mine(S.uid),vis=r.filter(a=>['ok','small','late'].includes(a.status)).length,lt=r.filter(a=>a.status==='small'||a.status==='late').length,nb=r.filter(a=>a.status==='nb').length,last=r.sort((a,b)=>b.ts-a.ts)[0];
+ return`<div class="top"><div><small>Привет,</small><h1>${E(m.first)}!</h1><small>${E(m.last)} ${E(m.first)} · ${E(m.group)}</small></div><div class="heart big">${hearts(S.uid)} ❤</div></div>
+<div class="card hero"><small class="mu">Текущий статус</small><div style="font-size:20px;font-weight:700;margin-top:4px">${last?ST[last.status][0]+' · '+tm(last.ts):'Пока нет отметок'}</div><div class="mu">${last?last.date+' · '+last.pair:''}</div></div>
+<div class="grid"><div class="card stat"><b>${vis}</b><small>Посещено</small></div><div class="card stat"><b>${lt}</b><small>Опозданий</small></div><div class="card stat"><b>${nb}</b><small>Пропусков</small></div></div>
+<button class="btn" data-a="go" data-v="scan">Отметиться по коду</button><button class="btn s" data-a="go" data-v="hist">История посещаемости</button><button class="btn s" data-a="go" data-v="hearts">Мои сердечки ❤</button>
+<h2>Самые пунктуальные недели</h2><div class="card">${rank().map((x,i)=>`<div class="row"><span>${i+1}. ${E(x[0])}</span><b>${x[1]}</b></div>`).join('')||'<span class="mu">Пока нет данных</span>'}</div><button class="btn s" data-a="logout">Выйти из аккаунта</button>`}
+function vHist(){const r=mine(S.uid).sort((a,b)=>b.ts-a.ts),d=new Date(),y=d.getFullYear(),mo=d.getMonth(),n=new Date(y,mo+1,0).getDate(),off=(new Date(y,mo,1).getDay()+6)%7,col={};
+ r.forEach(a=>{const k=a.date,c=a.status==='nb'?'r':a.status==='freed'?'b':a.status==='ok'?'g':'y';if(!col[k]||c==='r')col[k]=c});
+ let cal='';for(let i=0;i<off;i++)cal+='<div></div>';for(let i=1;i<=n;i++){const c=col[`${y}-${P(mo+1)}-${P(i)}`];cal+=`<div class="${c||''}" style="${c?'color:#fff':''}${c==='y'?';color:#222':''}">${i}</div>`}
+ return`<h1>История</h1><div class="card"><div class="cal">${cal}</div><p><span class="pill g">Присутствовал</span> <span class="pill y">Опоздал</span> <span class="pill r">Отсутствовал</span> <span class="pill b">Освобождён ❤</span></p></div>
+<div class="card">${r.map(a=>`<div class="row"><div><b>${a.date}</b> · ${a.pair}<br><small>${a.status==='nb'?'—':tm(a.ts)} · пара</small></div><div>${pill(a.status)}${a.status==='freed'?' <span class="heart">−1❤</span>':''}</div></div>`).join('')||'<span class="mu">Записей нет</span>'}</div><button class="btn s" data-a="go" data-v="home">Назад</button>`}
+function vHearts(){const nb=mine(S.uid).filter(a=>a.status==='nb'&&!S.reqs.some(q=>q.attId===a.id&&q.st!=='no')),rq=S.reqs.filter(q=>q.sid===S.uid).sort((a,b)=>b.at-a.at);
+ return`<h1>Мои сердечки</h1><div class="card hero"><div class="big">${hearts(S.uid)} ❤</div><small class="mu">1 ❤ за неделю без опозданий свыше ${S.cfg.grace} мин. 1 ❤ = освобождение от 1 НБ.</small></div>
+<div class="card"><b>Использовать сердечко</b>${nb.length&&hearts(S.uid)>0?`<select id="nbsel">${nb.map(a=>`<option value="${a.id}">${a.date} · ${a.pair}</option>`).join('')}</select><button class="btn red" data-a="useheart">Использовать сердечко</button>`:`<p class="mu">${hearts(S.uid)>0?'Нет НБ для освобождения.':'Нужно хотя бы одно сердечко.'}</p>`}</div>
+<h2>Мои запросы</h2><div class="card">${rq.map(q=>`<div class="row"><span>${q.date}</span><span class="pill ${q.st==='ok'?'g':q.st==='no'?'r':'w'}">${q.st==='ok'?'Подтверждено':q.st==='no'?'Отклонено':'Ожидает'}</span></div>`).join('')||'<span class="mu">Нет запросов</span>'}</div><button class="btn s" data-a="go" data-v="home">Назад</button>`}
+/* admin */
+function rowsFor(from){return S.att.filter(a=>a.date>=from)}
+function vToday(){const t=dk(Date.now()),all=Object.entries(S.students),gs=[...new Set(all.map(([,s])=>s.group))],rec={};S.att.filter(a=>a.date===t).forEach(a=>rec[a.sid]=a);
+ const rows=all.filter(([,s])=>(!S.grp||s.group===S.grp)&&(s.last+' '+s.first).toLowerCase().includes(S.q.toLowerCase()));
+ const from=S.per==='day'?t:S.per==='week'?wk(Date.now()):t.slice(0,8)+'01',R=rowsFor(from),cnt=k=>R.filter(a=>k.includes(a.status)).length;
+ const gst=gs.map(g=>{const x=S.att.filter(a=>a.group===g);return`<div class="row"><span>${E(g)}</span><span>${x.length?Math.round(100*x.filter(a=>a.status==='ok'||a.status==='freed').length/x.length):0}% вовремя</span></div>`}).join('');
+ return`<h1>Сегодня · ${t}</h1><div class="grid"><div class="card stat"><b>${cnt(['ok','small','late'])}</b><small>Пришли</small></div><div class="card stat"><b>${cnt(['small','late'])}</b><small>Опоздали</small></div><div class="card stat"><b>${cnt(['nb'])}</b><small>НБ</small></div></div>
+<select data-c="per"><option value="day"${S.per==='day'?' selected':''}>День</option><option value="week"${S.per==='week'?' selected':''}>Неделя</option><option value="month"${S.per==='month'?' selected':''}>Месяц</option></select>
+<input id="q" placeholder="Поиск по ФИО" value="${E(S.q)}"><select data-c="grp"><option value="">Все группы</option>${gs.map(g=>`<option${g===S.grp?' selected':''}>${E(g)}</option>`).join('')}</select>
+<div class="card tbl"><table><tr><th>Студент</th><th>Группа</th><th>Приход</th><th>Статус</th></tr>${rows.map(([id,s])=>{const a=rec[id];return`<tr><td>${E(s.last)} ${E(s.first)}</td><td>${E(s.group)}</td><td>${a&&a.status!=='nb'?tm(a.ts):'—'}</td><td>${pill(a?a.status:'')}<select data-fix="${id}" style="width:auto;padding:4px"><option value="">изменить…</option>${Object.keys(ST).map(k=>`<option value="${k}">${ST[k][0]}</option>`).join('')}</select></td></tr>`}).join('')||'<tr><td colspan=4 class="mu">Студентов нет</td></tr>'}</table></div>
+<button class="btn s" data-a="closeday">Закрыть пару: НБ отсутствующим</button><button class="btn s" data-a="csv">Экспорт отчёта (CSV для Excel)</button><h2>Группы</h2><div class="card">${gst||'<span class="mu">Нет данных</span>'}</div>`}
+function vQR(){return`<h1>Код для студентов</h1><p class="mu">Покажите код на доске или экране. Он действует один день.</p><div class="card" style="text-align:center"><div class="big" style="font-size:64px;letter-spacing:10px">${code()}</div><button class="btn s" data-a="newcode">Сменить код</button></div>`}
+function vReqs(){const w=S.reqs.filter(r=>r.st==='wait'),h=S.reqs.filter(r=>r.st!=='wait');return`<h1>Запросы ❤</h1><div class="card">${w.map(r=>`<div class="row"><span>${E(r.name)}<br><small>${r.date}</small></span><span><button class="btn sm ok" data-a="appr" data-id="${r.id}">Да</button><button class="btn sm red" data-a="rej" data-id="${r.id}">Нет</button></span></div>`).join('')||'<span class="mu">Нет новых запросов</span>'}</div><h2>История</h2><div class="card">${h.map(r=>`<div class="row"><span>${E(r.name)} · ${r.date}</span><span class="pill ${r.st==='ok'?'g':'r'}">${r.st==='ok'?'Да':'Нет'}</span></div>`).join('')||'<span class="mu">Пусто</span>'}</div>`}
+function vStuds(){return`<h1>Студенты</h1><div class="card"><input id="ns" placeholder="Фамилия Имя"><input id="ng" placeholder="Группа"><button class="btn" data-a="addst">Добавить</button></div><div class="card">${Object.entries(S.students).map(([id,s])=>`<div class="row"><span>${E(s.last)} ${E(s.first)}<br><small>${E(s.group)} · ${hearts(id)} ❤</small></span><span><button class="btn sm s" data-a="adj" data-id="${id}" data-d="1">+❤</button><button class="btn sm s" data-a="adj" data-id="${id}" data-d="-1">−❤</button><button class="btn sm red" data-a="del" data-id="${id}">✕</button></span></div>`).join('')||'<span class="mu">Пока никого нет — студенты появятся после первого входа.</span>'}</div>`}
+function vCfg(){return`<h1>Расписание</h1><div class="card"><small>Начало пар (через запятую)</small><input id="cp" value="${E(S.cfg.pairs.join(', '))}"><small>Допустимое опоздание, мин</small><input id="cg" type="number" value="${S.cfg.grace}"><button class="btn" data-a="savecfg">Сохранить</button></div><div class="card"><small>PIN для входа преподавателей</small><div class="big">${E(S.cfg.tpin||'—')}</div><small>Преподавателей: ${Object.keys(S.teachers).length}</small><button class="btn s" data-a="newpin">Сменить PIN</button></div><div class="card"><button class="btn s" data-a="stu">Открыть как студент</button><button class="btn red" data-a="logout">Выйти из аккаунта</button></div>`}
+/* ---------- render ---------- */
+function render(){const A=$('#app'),N=$('#nav');if(!db){A.innerHTML='<div class="card">Не удалось подключиться к базе данных. Проверьте файл config.js (настройки Firebase).</div>';return}
+ if(!S.cfg){A.innerHTML=S.admin?'Создаём настройки…':'<div class="card">Колледж ещё не настроен администратором.</div>';N.innerHTML='';return}
+ const adm=S.admin&&!S.asStu&&!S.out,tabs=adm?[['today','📋','Сегодня'],['qr','🔢','Код'],['reqs','❤','Запросы'],['studs','👥','Студенты'],['cfg','⚙','Настройки']]:[['home','🏠','Главная'],['scan','🔢','Код'],['hist','📅','История'],['hearts','❤','Сердечки']];
+ if(adm&&!tabs.some(t=>t[0]===S.v))S.v='today';if(!adm&&!me()&&S.v!=='scan'&&S.v!=='form'&&S.v!=='tform')S.v='welcome';if(!adm&&me()&&['welcome'].includes(S.v))S.v='home';
+ const V={today:vToday,qr:vQR,reqs:vReqs,studs:vStuds,cfg:vCfg,home:vHome,scan:vScan,form:vForm,tform:vTForm,hist:vHist,hearts:vHearts,welcome:vWelcome};
+ const act=document.activeElement&&document.activeElement.id;A.innerHTML=(S.v==='scan'||S.v==='form'||S.v==='welcome'||!tabs.some(t=>t[0]===S.v)?V[S.v]:V[S.v])();
+ N.innerHTML=(adm||me())?`<nav><div>${tabs.map(t=>`<button class="${S.v===t[0]?'on':''}" data-a="go" data-v="${t[0]}"><i>${t[1]}</i>${t[2]}</button>`).join('')}</div></nav>`:'';
+ if(act==='q'){const q=$('#q');q&&(q.focus(),q.setSelectionRange(99,99))}
+ if(!adm&&me()){const b=hearts(S.uid);if(S.prevBal!==null&&b>S.prevBal)toast('Новое сердечко! ❤ '+b);S.prevBal=b}}
+let qrT;function drawQR(){clearInterval(qrT);const f=()=>{const q=$('#qr');if(!q)return clearInterval(qrT);const t=tok(slot());q.innerHTML='';new QRCode(q,{text:t,width:200,height:200});$('#qt').textContent=t};f();qrT=setInterval(f,15000)}
+/* ---------- events ---------- */
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,id=b.dataset.id;try{
+ if(a==='go')go(b.dataset.v);
+ else if(a==='manual')checkIn($('#mc').value);
+ else if(a==='newcode'){await db.doc('cfg/main').update({salt:Math.random().toString(36).slice(2)});toast('Код обновлён')}
+ else if(a==='tlogin'){const n=$('#tn').value.trim(),p=$('#tp').value.trim();if(!n)return toast('Введите ФИО');if(!S.cfg||(!S.owner&&p!==S.cfg.tpin))return toast('Неверный PIN');await db.doc('teachers/'+S.uid).set({name:n,at:Date.now()});setOut(false);toast('Добро пожаловать, '+n)}
+ else if(a==='logout'){const t=S.admin;setOut(true);S.asStu=false;S.v='welcome';if(t)await db.doc('teachers/'+S.uid).delete();render()}
+ else if(a==='newpin'){await db.doc('cfg/main').update({tpin:String(1000+Math.floor(Math.random()*9000))});toast('PIN обновлён')}
+ else if(a==='login'){const l=$('#ln').value.trim(),f=$('#fn').value.trim(),g=$('#gr').value.trim().toUpperCase();if(!l||!f||!g)return toast('Заполните все поля');const ad=(S.students[S.uid]||{}).adj||0;await db.doc('students/'+S.uid).set({last:l,first:f,group:g,adj:ad});S.students[S.uid]={last:l,first:f,group:g,adj:ad};setOut(false);const t=S.pend;S.pend=null;if(t)await checkIn(t);else{S.v='home';render()}}
+ else if(a==='useheart'){const aid=$('#nbsel').value,x=S.att.find(z=>z.id===aid);if(!x||hearts(S.uid)<1)return;const r=await db.collection('reqs').add({sid:S.uid,name:x.name,attId:aid,date:x.date,st:'wait',at:Date.now()});toast('Запрос отправлен преподавателю')}
+ else if(a==='appr'||a==='rej'){const r=S.reqs.find(z=>z.id===id);if(a==='appr'){const x=S.att.find(z=>z.id===r.attId);if(x&&x.status==='nb'){await write(r.attId,{status:'freed'},'admin');await db.doc('reqs/'+id).update({st:'ok'})}else return toast('Запись уже не НБ')}else await db.doc('reqs/'+id).update({st:'no'})}
+ else if(a==='closeday'){const n=Date.now(),pr=curPair(n),t=dk(n);for(const[sid,s]of Object.entries(S.students)){const k=`${sid}_${t}_${pr.p.replace(':','')}`;if(!S.att.some(z=>z.id===k))await write(k,{sid,name:s.last+' '+s.first,group:s.group,ts:pr.t,date:t,pair:pr.p,status:'nb'},'admin')}toast('НБ проставлены')}
+ else if(a==='csv'){const rows=[['Студент','Группа','Дата','Пара','Приход','Статус']].concat(S.att.sort((x,y)=>x.ts-y.ts).map(z=>[z.name,z.group,z.date,z.pair,z.status==='nb'?'':tm(z.ts),ST[z.status][0]]));const dl=await claude.use('downloads');dl?await dl.save({filename:'attendance.csv',data:'\ufeff'+rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(';')).join('\n')}):toast('Скачивание недоступно')}
+ else if(a==='addst'){const p=$('#ns').value.trim().split(/\s+/),g=$('#ng').value.trim().toUpperCase();if(p.length<2||!g)return toast('Фамилия, имя и группа');await db.doc('students/m'+Date.now()).set({last:p[0],first:p.slice(1).join(' '),group:g,adj:0})}
+ else if(a==='del'){if(S.delArm!==id){S.delArm=id;return toast('Нажмите ✕ ещё раз для удаления')}S.delArm=null;await db.doc('students/'+id).delete()}
+ else if(a==='adj'){const s=S.students[id];await db.doc('students/'+id).update({adj:(s.adj||0)+Number(b.dataset.d)})}
+ else if(a==='savecfg'){const p=$('#cp').value.split(',').map(x=>x.trim()).filter(x=>/^\d{1,2}:\d{2}$/.test(x)).map(x=>{const[h,m]=x.split(':');return P(h)+':'+m});if(!p.length)return toast('Формат: 08:00, 09:40');await db.doc('cfg/main').update({pairs:p,grace:Number($('#cg').value)||5});toast('Сохранено')}
+ else if(a==='stu'){S.asStu=true;S.v='home';render()}
+}catch(err){toast('Ошибка: '+(err.message||err.code||err))}});
+document.addEventListener('input',e=>{if(e.target.id==='q'){S.q=e.target.value;render()}});
+document.addEventListener('change',async e=>{const t=e.target;if(t.dataset.c){S[t.dataset.c]=t.value;render()}else if(t.dataset.fix&&t.value){const id=t.dataset.fix,s=S.students[id],n=Date.now(),pr=curPair(n),t0=dk(n),ex=S.att.find(z=>z.sid===id&&z.date===t0),k=ex?ex.id:`${id}_${t0}_${pr.p.replace(':','')}`;
+ try{await write(k,ex?{status:t.value}:{sid:id,name:s.last+' '+s.first,group:s.group,ts:n,date:t0,pair:pr.p,status:t.value},'admin')}catch(err){toast('Ошибка записи')}}});
+/* ---------- init ---------- */
+(async()=>{try{[db,user]=await Promise.all([claude.use('db'),claude.use('user')])}catch(e){}
+ if(!db||!user)return render();S.uid=await user.id();S.owner=!!(user.isOwner()||user.canEdit());
+ const sub=(q,fn)=>q.onSnapshot(fn,e=>toast('База: '+e.code));
+ sub(db.doc('cfg/main'),s=>{if(s.exists){S.cfg=s.data();if(!S.cfg.tpin)db.doc('cfg/main').update({tpin:'1234'})}else db.doc('cfg/main').set({tpin:'1234',pairs:['08:00','09:40','11:30'],grace:5,secret:Math.random().toString(36).slice(2)+Date.now().toString(36)});render()});
+ sub(db.collection('students'),s=>{S.students={};s.docs.forEach(d=>S.students[d.id]=d.data());render()});
+ sub(db.collection('teachers'),s=>{S.teachers={};s.docs.forEach(d=>S.teachers[d.id]=d.data());S.admin=!!S.teachers[S.uid];render()});
+ sub(db.collection('att'),s=>{S.att=s.docs.map(d=>Object.assign({id:d.id},d.data()));render()});
+ sub(db.collection('reqs'),s=>{S.reqs=s.docs.map(d=>Object.assign({id:d.id},d.data()));S.reqs.filter(r=>r.sid===S.uid).forEach(r=>{if(S.prevReq[r.id]&&S.prevReq[r.id]!==r.st)toast(r.st==='ok'?'Запрос подтверждён: сердечко использовано':'Запрос отклонён');S.prevReq[r.id]=r.st});render()});
+ render()})();
+</script></body></html>
